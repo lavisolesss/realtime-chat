@@ -1,0 +1,496 @@
+<title>匿名聊天室設計稿</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* 版面：手機優先單欄（頂部列／橫幅／訊息列表／輸入區）；容器寬度 ≥ 860px 時右側常駐在線名單 */
+:root {
+  --bg: #EDF0F4;
+  --surface: #FFFFFF;
+  --surface-2: #E2E7EE;
+  --fg: #17202B;
+  --muted: #5A6576;
+  --line: #D2D9E2;
+  --accent: #2546B5;
+  --on-accent: #FFFFFF;
+  --accent-soft: #DDE5FB;
+  --warn-bg: #FFF0D2;
+  --warn-fg: #6E4300;
+  --danger: #B42318;
+  --danger-soft: #FCE3E0;
+  --scrim: rgba(15, 20, 27, .42);
+  --tag-l: 55%;
+  --tag-c: .15;
+
+  --font-display: "LXGW WenKai TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --text-xs: .75rem; --text-sm: .8125rem; --text-md: .9375rem; --text-lg: 1.125rem; --text-xl: 1.375rem;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+  --radius-bubble: 18px; --radius-ctl: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E131A; --surface: #18202A; --surface-2: #222C38; --fg: #E6EBF1; --muted: #9AA6B5;
+    --line: #2B3644; --accent: #8AA4FF; --on-accent: #0A1022; --accent-soft: #1E2949;
+    --warn-bg: #3A2A09; --warn-fg: #FFD48A; --danger: #FF8B7B; --danger-soft: #3A1714;
+    --scrim: rgba(0, 0, 0, .6); --tag-l: 74%; --tag-c: .13; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E131A; --surface: #18202A; --surface-2: #222C38; --fg: #E6EBF1; --muted: #9AA6B5;
+  --line: #2B3644; --accent: #8AA4FF; --on-accent: #0A1022; --accent-soft: #1E2949;
+  --warn-bg: #3A2A09; --warn-fg: #FFD48A; --danger: #FF8B7B; --danger-soft: #3A1714;
+  --scrim: rgba(0, 0, 0, .6); --tag-l: 74%; --tag-c: .13; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 var(--text-md)/1.6 var(--font-body); }
+button, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- 預覽頁外框 ---------- */
+.page { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 40px; display: grid; gap: var(--space-4); }
+.page-head h1 { margin: 0; font: 700 var(--text-xl)/1.3 var(--font-display); text-wrap: balance; }
+.page-head p { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-sm); max-width: 65ch; }
+.states { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.states button {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  padding: 6px 12px; font-size: var(--text-sm); cursor: pointer;
+}
+.states button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.state-note { margin: 0; font-size: var(--text-sm); color: var(--muted); min-height: 1.6em; }
+
+.app {
+  container-type: inline-size;
+  position: relative; height: min(760px, 82vh); min-height: 560px; margin: 0 auto; max-width: 100%;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
+  display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: minmax(0, 1fr);
+}
+.stage.is-phone .app { max-width: 400px; }
+
+/* ---------- 頂部列 ---------- */
+.topbar {
+  display: flex; align-items: center; gap: var(--space-2); padding: 10px var(--space-4);
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.room-name { margin: 0; font: 700 var(--text-lg)/1.2 var(--font-display); white-space: nowrap; }
+.topbar .spacer { flex: 1; }
+.chip-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 999px; padding: 4px 10px; font-size: var(--text-sm); cursor: pointer; min-width: 0; white-space: nowrap;
+}
+.chip-btn:hover { background: var(--surface-2); }
+.me-name { overflow: hidden; text-overflow: ellipsis; max-width: 9em; }
+.online-dot { width: 8px; height: 8px; border-radius: 50%; background: #1F9D55; flex: none; }
+
+/* ---------- 橫幅 ---------- */
+.banners { display: grid; }
+.banner { display: flex; gap: var(--space-2); align-items: center; padding: 6px var(--space-4); font-size: var(--text-sm); }
+.banner-demo { background: var(--accent-soft); color: var(--fg); }
+.banner-demo b { font-weight: 700; color: var(--accent); }
+.banner-offline { background: var(--warn-bg); color: var(--warn-fg); font-weight: 500; }
+.spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 主體：訊息列表＋側欄 ---------- */
+.body { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.list-wrap { position: relative; min-height: 0; }
+.list { height: 100%; overflow-y: auto; padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.list-top { text-align: center; font-size: var(--text-xs); color: var(--muted); display: flex; justify-content: center; align-items: center; gap: var(--space-2); padding-block: var(--space-1); }
+.day { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-xs); color: var(--muted); letter-spacing: .04em; }
+.day::before, .day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.msg { display: grid; gap: 2px; max-width: min(80%, 34em); justify-items: start; }
+.msg.mine { align-self: flex-end; justify-items: end; }
+.meta { display: flex; align-items: baseline; gap: 6px; font-size: var(--text-xs); color: var(--muted); flex-wrap: wrap; }
+.meta .nick { color: var(--fg); font-weight: 500; font-size: var(--text-sm); }
+.tag {
+  font: 500 var(--text-xs)/1 var(--font-mono); color: var(--muted);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: oklch(var(--tag-l) var(--tag-c) var(--h, 250)); }
+.time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.bubble {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-bubble); border-top-left-radius: 6px;
+  padding: 8px 12px; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0;
+}
+.mine .bubble { background: var(--accent); color: var(--on-accent); border-color: var(--accent); border-top-left-radius: var(--radius-bubble); border-top-right-radius: 6px; }
+.bubble a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.mine .bubble a { color: inherit; }
+.edited { font-size: var(--text-xs); color: var(--muted); }
+.actions { display: flex; gap: var(--space-1); opacity: 0; transition: opacity .15s; }
+.msg.mine:hover .actions, .msg.mine:focus-within .actions, .msg.show-actions .actions { opacity: 1; }
+.act { border: 0; background: none; padding: 2px 6px; border-radius: 6px; font-size: var(--text-xs); color: var(--muted); cursor: pointer; }
+.act:hover { background: var(--surface-2); color: var(--fg); }
+.act.danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+.edit-box { display: grid; gap: var(--space-2); width: min(100%, 30em); background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius-ctl); padding: var(--space-2); }
+.edit-box textarea { border: 0; background: none; resize: none; min-height: 3.2em; outline: none; }
+.edit-row { display: flex; align-items: center; gap: var(--space-2); }
+.edit-row .counter { margin-right: auto; }
+
+.empty { margin: auto; text-align: center; color: var(--muted); display: grid; gap: var(--space-1); padding: var(--space-5); }
+.empty strong { font: 700 var(--text-lg)/1.4 var(--font-display); color: var(--fg); }
+
+.new-pill {
+  position: absolute; left: 50%; bottom: var(--space-3); transform: translateX(-50%);
+  background: var(--accent); color: var(--on-accent); border: 0; border-radius: 999px; padding: 6px 14px;
+  font-size: var(--text-sm); font-weight: 500; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.18); white-space: nowrap;
+}
+
+/* ---------- 在線名單 ---------- */
+.roster { background: var(--surface); border-left: 1px solid var(--line); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+.roster-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+.roster-head h2 { margin: 0; font-size: var(--text-md); font-weight: 700; }
+.roster ul { list-style: none; margin: 0; padding: var(--space-2) 0; overflow-y: auto; }
+.roster li { display: flex; align-items: baseline; gap: 6px; padding: 6px var(--space-4); min-width: 0; }
+.roster li .nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster li .you { font-size: var(--text-xs); color: var(--accent); font-weight: 500; }
+.icon-btn { border: 0; background: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1; color: var(--muted); }
+.icon-btn:hover { background: var(--surface-2); color: var(--fg); }
+
+/* 手機：在線名單是右側滑出面板 */
+.roster.drawer { position: absolute; inset: 0 0 0 auto; width: min(300px, 86%); z-index: 20; box-shadow: -8px 0 24px rgba(0,0,0,.18); }
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 15; }
+
+@container (min-width: 860px) {
+  .body { grid-template-columns: minmax(0, 1fr) 260px; }
+  .roster.drawer { position: static; width: auto; box-shadow: none; }
+  .roster .close-roster, .online-toggle-hint { display: none; }
+}
+
+/* ---------- 輸入區 ---------- */
+.composer { background: var(--surface); border-top: 1px solid var(--line); padding: var(--space-2) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; }
+.hint { font-size: var(--text-xs); color: var(--warn-fg); background: var(--warn-bg); border-radius: 8px; padding: 4px 10px; justify-self: start; }
+.compose-row { display: flex; align-items: flex-end; gap: var(--space-2); }
+.input-shell { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-ctl); padding: 6px 10px; display: grid; }
+.input-shell:focus-within { border-color: var(--accent); }
+.input-shell textarea { border: 0; background: none; resize: none; outline: none; max-height: 7.5em; min-height: 1.6em; field-sizing: content; }
+.counter { font: 500 var(--text-xs)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); justify-self: end; }
+.counter.over { color: var(--danger); }
+.btn { border: 0; border-radius: var(--radius-ctl); padding: 9px 16px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
+.btn-ghost { background: none; color: var(--fg); }
+.btn-ghost:hover { background: var(--surface-2); }
+.btn-danger { background: var(--danger); color: var(--surface); }
+.btn-sm { padding: 5px 12px; font-size: var(--text-sm); }
+.composer-note { font-size: var(--text-xs); color: var(--muted); }
+
+/* ---------- 對話框 ---------- */
+.modal { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: var(--space-4); }
+.modal .scrim { z-index: 0; }
+.dialog { position: relative; z-index: 1; width: min(360px, 100%); background: var(--surface); border-radius: 16px; padding: var(--space-5); display: grid; gap: var(--space-3); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.dialog h2 { margin: 0; font-size: var(--text-lg); font-weight: 700; }
+.dialog p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.field { display: grid; gap: 6px; }
+.field label { font-size: var(--text-sm); font-weight: 500; }
+.field-row { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-ctl); padding: 8px 10px; background: var(--bg); }
+.field-row:focus-within { border-color: var(--accent); }
+.field-row input { flex: 1; min-width: 0; border: 0; background: none; outline: none; }
+.field-error { font-size: var(--text-xs); color: var(--danger); min-height: 1.2em; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } .actions { transition: none; } }
+</style>
+
+<div class="page">
+  <header class="page-head">
+    <h1>匿名聊天室設計稿</h1>
+    <p>依照 docs/architecture.md 第 7 節「畫面清單」設計。點下面的按鈕切換畫面狀態；輸入框可以實際打字看字數計數和 1 秒冷卻。內容都是示範用的假資料。</p>
+  </header>
+
+  <div class="states" role="group" aria-label="畫面狀態">
+    <button type="button" data-state="main" aria-pressed="true">主畫面</button>
+    <button type="button" data-state="scrolled">往上看舊訊息</button>
+    <button type="button" data-state="offline">斷線中</button>
+    <button type="button" data-state="cooldown">送太快</button>
+    <button type="button" data-state="editing">編輯模式</button>
+    <button type="button" data-state="nickname">改暱稱</button>
+    <button type="button" data-state="roster">在線名單（手機）</button>
+    <button type="button" data-state="delete">刪除確認</button>
+    <button type="button" data-state="empty">空狀態</button>
+  </div>
+  <div class="states" role="group" aria-label="預覽寬度">
+    <button type="button" data-width="phone" aria-pressed="true">手機寬度</button>
+    <button type="button" data-width="full" aria-pressed="false">電腦寬度</button>
+  </div>
+  <p class="state-note" id="state-note"></p>
+
+  <div class="stage is-phone" id="stage">
+    <div class="app" id="app">
+      <header class="topbar">
+        <h2 class="room-name">匿名聊天室</h2>
+        <span class="spacer"></span>
+        <button type="button" class="chip-btn" id="me-btn" title="改暱稱">
+          <span class="me-name" id="me-name">匿名水獺</span><span class="tag" style="--h: 163">#a3f9</span>
+        </button>
+        <button type="button" class="chip-btn" id="online-btn" title="查看在線名單">
+          <span class="online-dot" aria-hidden="true"></span><span>5 人在線</span>
+        </button>
+      </header>
+
+      <div class="banners">
+        <div class="banner banner-demo" id="banner-demo"><b>示範模式</b><span>訊息只存在你的瀏覽器，不會傳給其他人</span></div>
+        <div class="banner banner-offline" id="banner-offline" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>連線中斷，正在重新連線…</span></div>
+      </div>
+
+      <div class="body">
+        <div class="list-wrap">
+          <div class="list" id="list" aria-live="polite"></div>
+          <button type="button" class="new-pill" id="new-pill" hidden>↓ 有 3 則新訊息</button>
+        </div>
+        <div class="scrim" id="roster-scrim" hidden></div>
+        <aside class="roster drawer" id="roster" aria-label="在線名單">
+          <div class="roster-head">
+            <h2>目前 5 人在線</h2>
+            <button type="button" class="icon-btn close-roster" id="close-roster" aria-label="關閉在線名單">×</button>
+          </div>
+          <ul>
+            <li><span class="nick">匿名水獺</span><span class="tag" style="--h: 163">#a3f9</span><span class="you">（你）</span></li>
+            <li><span class="nick">夜貓子鸚鵡</span><span class="tag" style="--h: 316">#7c21</span></li>
+            <li><span class="nick">安靜的刺蝟</span><span class="tag" style="--h: 24">#0be4</span></li>
+            <li><span class="nick">小明</span><span class="tag" style="--h: 224">#5d08</span></li>
+            <li><span class="nick">小明</span><span class="tag" style="--h: 98">#e912</span></li>
+          </ul>
+        </aside>
+      </div>
+
+      <footer class="composer">
+        <span class="hint" id="hint" role="status" hidden>送太快了，請稍等</span>
+        <div class="compose-row">
+          <div class="input-shell">
+            <textarea id="composer-input" rows="1" maxlength="600" placeholder="說點什麼…（Enter 送出，Shift＋Enter 換行）" aria-label="輸入訊息"></textarea>
+            <span class="counter" id="counter">0 / 500</span>
+          </div>
+          <button type="button" class="btn btn-primary" id="send-btn" disabled>送出</button>
+        </div>
+      </footer>
+
+      <div class="modal" id="modal-nick" hidden>
+        <div class="scrim" data-close></div>
+        <form class="dialog" id="nick-form" role="dialog" aria-modal="true" aria-labelledby="nick-title">
+          <h2 id="nick-title">改暱稱</h2>
+          <div class="field">
+            <label for="nick-input">暱稱</label>
+            <div class="field-row">
+              <input id="nick-input" maxlength="30" value="匿名水獺" autocomplete="off">
+              <span class="counter" id="nick-counter">4 / 20</span>
+            </div>
+            <span class="field-error" id="nick-error"></span>
+          </div>
+          <p>你的辨識碼 <span class="tag" style="--h: 163">#a3f9</span> 不會改變，別人靠它分辨你。</p>
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-close>取消</button>
+            <button type="submit" class="btn btn-primary btn-sm" id="nick-save">儲存</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="modal" id="modal-delete" hidden>
+        <div class="scrim" data-close></div>
+        <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="del-title">
+          <h2 id="del-title">刪除訊息</h2>
+          <p>確定要刪除這則訊息嗎？刪除後無法復原。</p>
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-close>取消</button>
+            <button type="button" class="btn btn-danger btn-sm" id="del-confirm">刪除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MESSAGES = [
+  { day: "10 月 12 日" },
+  { nick: "夜貓子鸚鵡", tag: "7c21", time: "23:41", text: "有人還醒著嗎" },
+  { nick: "匿名水獺", tag: "a3f9", time: "23:43", text: "我在 🙋 剛寫完報告", mine: true },
+  { day: "10 月 13 日" },
+  { nick: "安靜的刺蝟", tag: "0be4", time: "09:12", text: "早安～今天花蓮好熱" },
+  { nick: "小明", tag: "5d08", time: "09:15", text: "大家期中考準備得怎樣" },
+  { nick: "小明", tag: "e912", time: "09:16", text: "欸你怎麼也叫小明" },
+  { nick: "小明", tag: "5d08", time: "09:16", text: "我先來的 😤" },
+  { nick: "夜貓子鸚鵡", tag: "7c21", time: "09:20", text: "課程網頁在這 https://example.com/syllabus 第三週有範例" },
+  { nick: "匿名水獺", tag: "a3f9", time: "09:22", text: "謝啦，我晚點看", mine: true, edited: true, id: "m-own" },
+  { nick: "安靜的刺蝟", tag: "0be4", time: "09:24", text: "<script>alert(1)<\/script> 這樣會怎樣？" },
+];
+const NOTES = {
+  main: "一般狀態：示範模式橫幅、日期分隔線、自己的訊息靠右。滑鼠移到自己的訊息上會出現「編輯」「刪除」。",
+  scrolled: "往上捲到頂端時顯示「載入中…」；這時有新訊息進來，底部出現「↓ 有 N 則新訊息」，畫面不會被拉走。",
+  offline: "斷線時頂部出現黃色橫幅，送出按鈕停用，輸入框裡的字保留。",
+  cooldown: "1 秒內連送第二則：送出按鈕變灰，輸入框上方提示「送太快了，請稍等」。",
+  editing: "編輯自己的訊息：在原位變成輸入框，Esc 等於取消，內容沒變時「儲存」不能按。",
+  nickname: "點頂部自己的名字打開。1～20 字，前後空白自動去掉，不合規定時「儲存」不能按。",
+  roster: "手機上點「5 人在線」從右側滑出；電腦寬度時名單常駐在右邊。",
+  delete: "按「刪除」後先確認，避免誤刪。",
+  empty: "完全沒有訊息時的畫面。",
+};
+const hue = tag => parseInt(tag, 16) % 360;
+const URL_RE = /https?:\/\/[^\s<>"'）)】]+/g;
+
+// 用 textContent 組出內容，網址才變成 <a>；這也是正式程式要遵守的做法
+function renderText(el, text) {
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    el.append(text.slice(last, m.index));
+    const a = document.createElement("a");
+    a.href = m[0]; a.textContent = m[0]; a.target = "_blank"; a.rel = "noopener noreferrer nofollow";
+    el.append(a);
+    last = m.index + m[0].length;
+  }
+  el.append(text.slice(last));
+}
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function tagEl(tag) { const t = el("span", "tag", "#" + tag); t.style.setProperty("--h", hue(tag)); return t; }
+
+function renderList(state) {
+  const list = document.getElementById("list");
+  list.replaceChildren();
+  if (state === "empty") {
+    const e = el("div", "empty");
+    e.append(el("strong", null, "還沒有人說話"), el("span", null, "來打個招呼吧！"));
+    list.append(e);
+    return;
+  }
+  const top = el("div", "list-top");
+  if (state === "scrolled") { top.append(el("span", "spinner"), el("span", null, "載入中…")); }
+  else top.textContent = "已經是最早的訊息";
+  list.append(top);
+
+  for (const m of MESSAGES) {
+    if (m.day) { list.append(el("div", "day", m.day)); continue; }
+    const row = el("article", "msg" + (m.mine ? " mine" : ""));
+    if (m.id === "m-own" && state === "main") row.classList.add("show-actions");
+    const meta = el("div", "meta");
+    meta.append(el("span", "nick", m.nick), tagEl(m.tag), el("span", "time", m.time));
+    if (m.edited) meta.append(el("span", "edited", "（已編輯）"));
+    row.append(meta);
+
+    if (m.id === "m-own" && state === "editing") {
+      const box = el("div", "edit-box");
+      const ta = el("textarea"); ta.id = "edit-input"; ta.value = m.text; ta.setAttribute("aria-label", "編輯訊息");
+      const r = el("div", "edit-row");
+      const c = el("span", "counter", `${[...m.text].length} / 500`);
+      const cancel = el("button", "btn btn-ghost btn-sm", "取消"); cancel.type = "button";
+      const save = el("button", "btn btn-primary btn-sm", "儲存"); save.type = "button"; save.disabled = true;
+      ta.addEventListener("input", () => { const n = [...ta.value.trim()].length; c.textContent = `${n} / 500`; c.classList.toggle("over", n > 500); save.disabled = ta.value.trim() === m.text || n === 0 || n > 500; });
+      ta.addEventListener("keydown", e => { if (e.key === "Escape") setState("main"); });
+      cancel.addEventListener("click", () => setState("main"));
+      save.addEventListener("click", () => { m.text = ta.value.trim(); m.edited = true; setState("main"); });
+      r.append(c, cancel, save); box.append(ta, r); row.append(box);
+    } else {
+      const b = el("div", "bubble"); renderText(b, m.text); row.append(b);
+    }
+    if (m.mine && state !== "editing") {
+      const acts = el("div", "actions");
+      const ed = el("button", "act", "編輯"); ed.type = "button"; ed.addEventListener("click", () => { if (m.id) setState("editing"); });
+      const del = el("button", "act danger", "刪除"); del.type = "button"; del.addEventListener("click", () => setState("delete"));
+      acts.append(ed, del); row.append(acts);
+    }
+    list.append(row);
+  }
+  requestAnimationFrame(() => { list.scrollTop = state === "scrolled" ? 0 : list.scrollHeight; });
+}
+
+const $ = id => document.getElementById(id);
+let current = "main";
+let cooldownTimer;
+function setState(state) {
+  current = state;
+  document.querySelectorAll("[data-state]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.state === state)));
+  $("state-note").textContent = NOTES[state];
+  renderList(state);
+  $("banner-offline").hidden = state !== "offline";
+  $("new-pill").hidden = state !== "scrolled";
+  $("hint").hidden = state !== "cooldown";
+  $("modal-nick").hidden = state !== "nickname";
+  $("modal-delete").hidden = state !== "delete";
+  const drawerOpen = state === "roster";
+  $("roster").classList.toggle("is-open", drawerOpen);
+  syncRoster();
+  updateSend();
+  if (state === "nickname") $("nick-input").focus();
+  if (state === "editing") requestAnimationFrame(() => $("edit-input")?.focus());
+}
+function syncRoster() {
+  const wide = $("app").getBoundingClientRect().width >= 860;
+  const open = $("roster").classList.contains("is-open");
+  $("roster").hidden = !wide && !open;
+  $("roster-scrim").hidden = wide || !open;
+}
+function updateSend() {
+  const v = $("composer-input").value.trim();
+  const n = [...v].length;
+  $("counter").textContent = `${n} / 500`;
+  $("counter").classList.toggle("over", n > 500);
+  $("send-btn").disabled = n === 0 || n > 500 || current === "offline" || current === "cooldown";
+}
+
+document.querySelectorAll("[data-state]").forEach(b => b.addEventListener("click", () => setState(b.dataset.state)));
+document.querySelectorAll("[data-width]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-width]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  $("stage").classList.toggle("is-phone", b.dataset.width === "phone");
+  syncRoster();
+}));
+window.addEventListener("resize", syncRoster);
+$("me-btn").addEventListener("click", () => setState("nickname"));
+$("online-btn").addEventListener("click", () => setState("roster"));
+$("close-roster").addEventListener("click", () => setState("main"));
+$("roster-scrim").addEventListener("click", () => setState("main"));
+$("new-pill").addEventListener("click", () => setState("main"));
+document.querySelectorAll("[data-close]").forEach(x => x.addEventListener("click", () => setState("main")));
+$("del-confirm").addEventListener("click", () => {
+  const i = MESSAGES.findIndex(m => m.id === "m-own");
+  if (i >= 0) MESSAGES.splice(i, 1);
+  setState("main");
+});
+
+$("composer-input").addEventListener("input", updateSend);
+$("composer-input").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+});
+$("send-btn").addEventListener("click", send);
+function send() {
+  if ($("send-btn").disabled) {
+    if (current === "cooldown") { $("hint").hidden = false; }
+    return;
+  }
+  const text = $("composer-input").value.trim();
+  const now = new Date();
+  MESSAGES.push({ nick: $("me-name").textContent, tag: "a3f9", time: now.toTimeString().slice(0, 5), text, mine: true });
+  $("composer-input").value = "";
+  setState("cooldown");
+  $("hint").hidden = true;
+  clearTimeout(cooldownTimer);
+  cooldownTimer = setTimeout(() => { if (current === "cooldown") setState("main"); }, 1000);
+}
+
+$("nick-input").addEventListener("input", () => {
+  const n = [...$("nick-input").value.trim()].length;
+  $("nick-counter").textContent = `${n} / 20`;
+  $("nick-counter").classList.toggle("over", n > 20);
+  $("nick-error").textContent = n === 0 ? "暱稱不能是空的" : n > 20 ? "暱稱最多 20 個字" : "";
+  $("nick-save").disabled = n === 0 || n > 20;
+});
+$("nick-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const v = $("nick-input").value.trim();
+  if (!v || [...v].length > 20) return;
+  $("me-name").textContent = v;
+  setState("main");
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && current !== "main") setState("main"); });
+
+setState("main");
+</script>
