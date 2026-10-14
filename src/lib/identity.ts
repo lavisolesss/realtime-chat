@@ -1,4 +1,4 @@
-// 身分、隨機暱稱、辨識碼（docs/architecture.md 第 6.1、6.4 節）。
+// 身分、暱稱、隨機暱稱、辨識碼（docs/architecture.md 第 6.1、6.4 節）。
 
 import type { Identity } from '../types';
 import { cleanNickname, nicknameError } from './validate';
@@ -26,18 +26,18 @@ export function tagHue(tag: string): number {
   return (parseInt(tag, 16) || 0) % 360;
 }
 
-/** 讀取暱稱；沒有或不合規定就產生新的隨機暱稱並存起來 */
-export function loadIdentity(storage: Storage | null, userId: string): Identity {
-  let nickname = '';
+/** 讀取上次用過的暱稱，預填在進入畫面；沒有或不合規定就回傳空字串 */
+export function loadSavedNickname(storage: Storage | null): string {
   try {
-    nickname = cleanNickname(storage?.getItem(NICKNAME_KEY) ?? '');
+    const nickname = cleanNickname(storage?.getItem(NICKNAME_KEY) ?? '');
+    return nicknameError(nickname) ? '' : nickname;
   } catch {
-    // 瀏覽器不允許存取儲存空間時，直接用隨機暱稱
+    // 瀏覽器不允許存取儲存空間時，就當作沒有存過
+    return '';
   }
-  if (nicknameError(nickname)) {
-    nickname = randomNickname();
-    saveNickname(storage, nickname);
-  }
+}
+
+export function createIdentity(userId: string, nickname: string): Identity {
   return { userId, nickname, tag: tagFromUserId(userId) };
 }
 
