@@ -349,6 +349,13 @@ input {
   background: var(--danger-soft);
   color: var(--danger);
 }
+.act:disabled,
+.act:disabled:hover {
+  background: none;
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .edit-box {
   display: grid;

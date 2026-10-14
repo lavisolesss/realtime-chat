@@ -4,7 +4,7 @@ import type { ChatStore } from '../state/store';
 import { MAX_CONTENT_LENGTH, type Message } from '../types';
 import { formatTime } from '../lib/time';
 import { renderTextWithLinks } from '../lib/linkify';
-import { charLength, cleanContent } from '../lib/validate';
+import { charLength, cleanContent, stripHiddenChars } from '../lib/validate';
 import { button, h, tagElement } from './dom';
 
 export interface MessageItem {
@@ -19,7 +19,7 @@ export function createMessageItem(message: Message, store: ChatStore, actions: {
   const edited = h('span', 'edited', '（已編輯）');
   const meta = h('div', 'meta');
   meta.append(
-    h('span', 'nick', message.nickname),
+    h('span', 'nick', stripHiddenChars(message.nickname)),
     tagElement(message.tag),
     h('time', 'time', formatTime(message.createdAt), { datetime: message.createdAt }),
     edited,
@@ -30,17 +30,18 @@ export function createMessageItem(message: Message, store: ChatStore, actions: {
 
   let current = message;
   const render = () => {
-    renderTextWithLinks(bubble, current.content);
+    renderTextWithLinks(bubble, stripHiddenChars(current.content));
     edited.hidden = !current.editedAt;
   };
   render();
 
   if (mine) {
     const actionsRow = h('div', 'actions');
-    actionsRow.append(
-      button('act', '編輯', () => startEditing()),
-      button('act danger', '刪除', () => actions.onDelete(current.id)),
-    );
+    const editButton = button('act', '編輯', () => startEditing());
+    const deleteButton = button('act danger', '刪除', () => actions.onDelete(current.id));
+    // 斷線時不能編輯或刪除（docs/architecture.md 第 6.7 節）；之後的狀態變化由 message-list 統一切換
+    editButton.disabled = deleteButton.disabled = !store.canSend;
+    actionsRow.append(editButton, deleteButton);
     el.append(actionsRow);
     // 手機沒有滑鼠移過去的效果，點一下自己的訊息才顯示按鈕
     bubble.addEventListener('click', () => {
@@ -67,7 +68,7 @@ export function createMessageItem(message: Message, store: ChatStore, actions: {
       const length = charLength(text);
       counter.textContent = `${length} / ${MAX_CONTENT_LENGTH}`;
       counter.classList.toggle('over', length > MAX_CONTENT_LENGTH);
-      save.disabled = length === 0 || length > MAX_CONTENT_LENGTH || text === current.content;
+      save.disabled = length === 0 || length > MAX_CONTENT_LENGTH || text === current.content || !store.canSend;
     };
     const submit = async () => {
       if (save.disabled) return;

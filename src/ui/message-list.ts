@@ -131,6 +131,10 @@ export function createMessageList(store: ChatStore, actions: { onDelete: (id: st
   }
 
   store.events.on('messages', onChange);
+  // 斷線時停用所有「編輯」「刪除」按鈕
+  store.events.on('status', () => {
+    list.querySelectorAll<HTMLButtonElement>('.act').forEach((b) => (b.disabled = !store.canSend));
+  });
   store.events.on('older', ({ loading, hasMore }) => {
     top.replaceChildren();
     if (loading) top.append(h('span', 'spinner', undefined, { 'aria-hidden': 'true' }), h('span', undefined, '載入中…'));

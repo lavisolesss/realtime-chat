@@ -115,7 +115,8 @@ flowchart LR
 | **Realtime：Postgres Changes** | 資料庫一有新增、修改，就自動透過 WebSocket 通知訂閱的人 | 新訊息、編輯、刪除即時同步 | 「存資料」和「通知大家」是同一個動作，不會發生「大家看到了但其實沒存進去」的狀況 |
 | **Realtime：Presence** | 追蹤「現在誰連著線」的功能，有人進出會自動更新名單 | 在線人數和在線名單 | 專門為在線名單設計，關掉分頁或斷線會自動從名單消失 |
 | **Auth：Anonymous Sign-ins（匿名登入）** | 不用帳號密碼，就給每個訪客一個獨一無二的身分編號 | 判斷「這則訊息是不是你的」，決定你能不能編輯或刪除 | 需求要「可以編輯、刪除自己的訊息」，但又不要註冊。匿名登入剛好兩者兼顧，使用者完全感覺不到登入這件事 |
-| **Row Level Security（RLS，資料列層級權限）** | 在資料庫裡設定規則，例如「只有寫這則訊息的人可以改它」 | 防止有人改別人的訊息、防洗版、檢查字數 | 前端的檢查可以被繞過，RLS 是在 Supabase 那一端把關，才是真正的防線 |
+| **Row Level Security（RLS，資料列層級權限）** | 在資料庫裡設定規則，例如「只有寫這則訊息的人可以改它」 | 決定誰能讀、誰能送、誰能改：只有登入（含匿名登入）的人能讀和送，只有作者能改自己的訊息 | 前端的檢查可以被繞過，RLS 是在 Supabase 那一端把關，才是真正的防線 |
+| **觸發器（Trigger）與檢查規則（Check constraint）** | 觸發器是「資料寫進去之前自動執行的小程式」；檢查規則是「資料必須符合的條件」 | 防洗版（1 秒限制）、由伺服器填入身分／辨識碼／時間、字數與空白檢查、不能改暱稱和送出時間 | 這些規則跟「誰能做」無關，而是「資料必須長什麼樣子」，所以放在觸發器和檢查規則，而不是 RLS |
 
 **為什麼不用 Realtime 的 Broadcast（廣播）功能來傳訊息？** Broadcast 只負責傳話，不會存檔。我們需要「進來時看到舊訊息」和「斷線後補資料」，所以選擇「先存資料庫，再由資料庫通知大家」的 Postgres Changes。
 
@@ -161,9 +162,11 @@ flowchart LR
 1. 登入 [supabase.com](https://supabase.com)（可用 GitHub 帳號），按 **New project**。
    - 名稱：`realtime-chat`
    - Database Password：按 Generate 產生一組，**存進你的密碼管理器**（這個專案的程式用不到它，但之後管理資料庫可能需要）。
-   - Region：選離台灣近的，例如 **Northeast Asia (Tokyo)** 或 **Southeast Asia (Singapore)**。
+   - Region：選離台灣近的，例如 **Northeast Asia (Tokyo)** 或 **Southeast Asia (Singapore)**。目前的專案在 **Southeast Asia (Singapore)**（代號 `ouqhxwaevsrgppvcfzii`）。
 2. **Authentication → Sign In / Providers**：打開 **Allow anonymous sign-ins**（允許匿名登入）。
 3. **SQL Editor**：貼上 repo 裡 `supabase/migrations/` 的 SQL 檔並執行。它會建立 `messages` 資料表、RLS 規則、防洗版規則，並開啟這張表的 Realtime。（這個檔案在階段二由 Claude Code 寫好。）
+
+> 實際設定時，第 2、3 步是用一個暫時的 Supabase 個人存取權杖，透過 Supabase 管理 API 完成的（沒有使用 Supabase CLI）。權杖用完已經刪除。以後要改資料庫，用上面的 SQL Editor 手動執行新的 migration 檔即可。
 4. **Project Settings → API Keys**：抄下 Project URL 和 publishable key（見第 8 節），放進本機的 `.env.local` 和 GitHub 的 Secrets。
 
 ### 4.3 怎麼設計，才不用整個重寫
@@ -237,7 +240,9 @@ ChatTransport 會發出這些事件給狀態管理：
 | `message:deleted` | 有人刪除了訊息 | 被刪的訊息 `id` |
 | `presence:sync` | 在線名單有變化 | 全部在線者的清單（PresenceUser 陣列） |
 | `connection:status` | 連線狀態改變 | ConnectionStatus |
-| `error` | 動作失敗，例如送太快被伺服器擋下 | 錯誤代碼與給使用者看的中文說明 |
+| `error` | 保留給「不是因為使用者動作而發生」的錯誤；目前兩種 Transport 都沒有用到 | 錯誤代碼與給使用者看的中文說明 |
+
+**動作失敗時**（例如送太快被伺服器擋下）：不是發出 `error` 事件，而是讓那個動作（`send`、`edit`、`remove`…）直接失敗，並帶著下面的錯誤代碼（程式裡叫 `ChatError`）。狀態管理收到後，在輸入框上方顯示對應的中文提示。這樣「哪個動作失敗」很清楚，輸入框也知道要不要清空。
 
 **錯誤代碼：**
 
@@ -254,6 +259,9 @@ ChatTransport 會發出這些事件給狀態管理：
 
 | 動作 | 說明 |
 |---|---|
+| `mode` | 不是動作，而是一個標記：`demo`（示範模式，階段一）或 `live`（接上 Supabase）。畫面用它決定要不要顯示示範模式橫幅 |
+| `signIn()` | 取得「我的身分編號」：階段一是存在分頁裡的隨機編號，階段二是 Supabase 匿名登入（已經登入過就沿用） |
+| `on(事件, 處理方式)` | 訂閱第 5.2 節的事件 |
 | `connect(我的身分)` | 開始連線、加入在線名單 |
 | `loadRecent()` | 取得最近 50 則訊息（不含已刪除） |
 | `loadBefore(最舊那則的時間與編號)` | 取得更早的 50 則 |
@@ -321,11 +329,13 @@ ChatTransport 會發出這些事件給狀態管理：
 
 ### 6.7 斷線與重連（階段二）
 
-1. 網路斷了 → Supabase 的連線程式發現 → 發出 `connection:status = reconnecting`。
+1. 網路斷了 → 發出 `connection:status = reconnecting`。有兩種情況會發現斷線：瀏覽器自己通知「離線了」（最快），或 Supabase 的連線程式發現連線中斷。
 2. 畫面上方出現「連線中斷，正在重新連線…」，送出、編輯、刪除按鈕暫時不能按。輸入框裡打到一半的字**保留**。
-3. Supabase 的連線程式會自動嘗試重連，等待時間會慢慢拉長，避免一直狂連。
-4. 重連成功 → 呼叫 `loadChangedSince(斷線前最後收到資料的時間)` → 把這段期間的新訊息補上，被編輯的換掉內容，被刪除的移除。
+3. Supabase 的連線程式會自動嘗試重連，等待時間會慢慢拉長，避免一直狂連。如果網路已經恢復，但超過 **15 秒**還沒連上，程式會把即時頻道拆掉重建一次。
+4. 重連成功 → 呼叫 `loadChangedSince(斷線前最後收到資料的時間)` → 把這段期間的新訊息補上，被編輯的換掉內容，被刪除的移除。比目前畫面上最舊那則還早的訊息就算被編輯了，也不會插進列表。
 5. 重新加入在線名單 → 發出 `connection:status = online` → 提示消失，按鈕恢復。
+
+> **第一次連線也會補一次資料。** 進入聊天室時是「先載入最近 50 則，再開始接收即時訊息」，這兩步之間如果剛好有人送出訊息，就會漏掉。所以每次「從沒連線變成已連線」（包括第一次），都會呼叫一次 `loadChangedSince`。
 
 ```mermaid
 sequenceDiagram
@@ -399,7 +409,7 @@ sequenceDiagram
 | 元素 | 行為 |
 |---|---|
 | 輸入框（預填原本的內容） | 規則跟送出時一樣：1～500 字 |
-| 「儲存」「取消」按鈕 | Esc 等於取消；內容沒變時「儲存」不能按 |
+| 「儲存」「取消」按鈕 | Esc 等於取消；Enter 等於儲存（Shift＋Enter 換行，和輸入區一樣）；內容沒變或斷線時「儲存」不能按 |
 
 ---
 
@@ -467,7 +477,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxx
 | **超長訊息** | 洗版、占空間 | 超過 500 字不能送出 | 資料庫規定內容最多 500 字，超過就拒絕 |
 | **空白訊息**（只有空白或換行） | 洗版 | 去掉前後空白後是空的就不能送 | 資料庫同樣檢查 |
 | **超長暱稱、空白暱稱** | 版面爆掉 | 去掉前後空白後必須 1～20 字 | 資料庫規定暱稱 1～20 字 |
-| **方向控制字元**（例如把文字反過來顯示的隱藏字元）、**零寬字元** | 偽造看起來一樣的暱稱、把版面弄亂 | 顯示前移除這些隱藏字元 | — |
+| **方向控制字元**（例如把文字反過來顯示的隱藏字元）、**零寬字元** | 偽造看起來一樣的暱稱、把版面弄亂 | 送出前移除，而且**顯示前再移除一次**：別人可能繞過網頁直接呼叫 Supabase，所以從伺服器收到的訊息和暱稱都不能信任 | — |
 | **大量換行** | 一則訊息佔滿整個畫面 | 連續換行最多保留 2 個；過長的訊息顯示時可以設最大高度 | — |
 | **狂送訊息** | 洗版、吃光免費額度 | 每則間隔至少 1 秒 | 資料庫檢查「同一個身分 1 秒內不能送第二則」，太快就拒絕 |
 | **冒充別人**，例如取一樣的暱稱 | 誤導其他人 | 名字後面一定顯示辨識碼 | 辨識碼由伺服器根據身分編號算出來，前端無法偽造 |
@@ -505,6 +515,8 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxx
 - **匿名登入可能被濫用**：有人可以用程式大量產生匿名身分。Supabase 建議加上 CAPTCHA（「我不是機器人」驗證），這一版先不做，靠「每個 IP 每小時 30 次」的預設限制擋著。
 - **沒有內容審查**：有人罵髒話或貼不當內容時，只能由你到 Supabase 後台手動刪除。
 - **辨識碼只有 4 碼**：兩個不同的人有極小的機會拿到一樣的辨識碼（約 6.5 萬分之一）。對小型聊天室來說可以接受。
+- **`anon` 角色帶有資料表權限**：Supabase 會自動讓「沒登入」的 `anon` 角色擁有 `messages` 的讀寫權限（由內部的 `supabase_realtime_admin` 授予，我們的 SQL 收回不了）。實際上沒有影響，因為 RLS 的三條規則都只開放給登入的人，測試也確認沒登入的人讀不到、也送不出訊息。
+- **匿名身分會累積**：每個新瀏覽器（或清掉資料、無痕視窗）都會產生一個新的匿名身分，留在 Supabase 的使用者清單裡。免費方案沒有數量上限，但之後可以考慮定期清掉很久沒用、也沒發過訊息的匿名身分。
 
 ---
 
@@ -537,12 +549,14 @@ realtime-chat/
 │       └── deploy.yml            # 自動打包並發佈到 GitHub Pages
 ├── docs/
 │   ├── requirements.md           # 需求說明
-│   └── architecture.md           # 這份文件
-├── public/                       # 不需處理、原樣複製的檔案（例如網站小圖示）
+│   ├── architecture.md           # 這份文件
+│   ├── design.md                 # 視覺設計規格（P5）
+│   └── design-preview.html       # 可以操作的設計稿
 ├── src/                          # 所有程式碼
 │   ├── main.ts                   # 程式起點：決定用哪個 Transport，啟動畫面
 │   ├── config.ts                 # 讀取 Supabase 設定；沒有設定就是示範模式
 │   ├── types.ts                  # 第 5 節的通訊約定（Message、事件、錯誤代碼）
+│   ├── vite-env.d.ts             # 告訴 TypeScript 有哪些 VITE_ 環境變數
 │   ├── transport/
 │   │   ├── transport.ts          # ChatTransport 介面（插頭形狀）
 │   │   ├── local-transport.ts    # 階段一：localStorage + BroadcastChannel
@@ -550,6 +564,7 @@ realtime-chat/
 │   ├── state/
 │   │   └── store.ts              # 狀態管理：訊息、在線名單、連線狀態
 │   ├── ui/                       # 畫面元件
+│   │   ├── dom.ts                # 建立畫面元素的小工具（一律用 textContent，不用 innerHTML）
 │   │   ├── header.ts             # 頂部列
 │   │   ├── banners.ts            # 示範模式、連線狀態橫幅
 │   │   ├── message-list.ts       # 訊息列表、日期分隔線、新訊息按鈕
@@ -567,7 +582,7 @@ realtime-chat/
 ├── supabase/
 │   └── migrations/
 │       └── 001_init.sql          # 資料表、RLS、防洗版規則（階段二才新增）
-├── index.html                    # 網頁入口
+├── index.html                    # 網頁入口（網站小圖示直接寫在這裡，所以沒有 public/ 資料夾）
 ├── .env.example                  # 金鑰範本（空值，會 commit）
 ├── .env.local                    # 真正的金鑰（不會 commit，自己建立）
 ├── .gitignore

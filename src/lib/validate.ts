@@ -5,6 +5,14 @@ import { MAX_CONTENT_LENGTH, MAX_NICKNAME_LENGTH, type ErrorCode } from '../type
 // 方向控制字元（可以把文字反過來顯示）與零寬字元
 const HIDDEN_CHARS = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
 
+/**
+ * 顯示前移除隱藏字元。別人可能繞過網頁直接呼叫 Supabase，
+ * 所以從伺服器收到的訊息和暱稱，顯示前都要再清一次（docs/architecture.md 第 9.1 節）。
+ */
+export function stripHiddenChars(text: string): string {
+  return text.replace(HIDDEN_CHARS, '');
+}
+
 /** 用「字元」計算長度，emoji 算 1 個字 */
 export function charLength(text: string): number {
   return [...text].length;

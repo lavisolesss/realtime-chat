@@ -1,6 +1,7 @@
 // 在線名單（docs/architecture.md 第 7.3 節）。手機是右側滑出的面板；寬螢幕時常駐在右邊。
 
 import type { ChatStore } from '../state/store';
+import { stripHiddenChars } from '../lib/validate';
 import { button, h, tagElement } from './dom';
 
 const WIDE_QUERY = '(min-width: 860px)';
@@ -45,7 +46,7 @@ export function createOnlineList(store: ChatStore): OnlineList {
     list.replaceChildren(
       ...users.map((user) => {
         const li = h('li');
-        li.append(h('span', 'nick', user.nickname), tagElement(user.tag));
+        li.append(h('span', 'nick', stripHiddenChars(user.nickname)), tagElement(user.tag));
         if (user.userId === me) li.append(h('span', 'you', '（你）'));
         return li;
       }),
