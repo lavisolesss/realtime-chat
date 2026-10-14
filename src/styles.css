@@ -695,3 +695,16 @@ input {
   width: 100%;
   padding: 11px 16px;
 }
+
+/* ---------- 訊息保存提示 ---------- */
+.entry-notice,
+.retention-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.entry-notice {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}

@@ -2,6 +2,7 @@
 // （docs/architecture.md 第 6.5、7.1 節，需求共識第 2、11、12 項）。
 
 import type { ChatStore, MessagesChange } from '../state/store';
+import { RETENTION_DAYS } from '../types';
 import { dayKey, formatDay } from '../lib/time';
 import { button, h } from './dom';
 import { createMessageItem, type MessageItem } from './message-item';
@@ -138,7 +139,7 @@ export function createMessageList(store: ChatStore, actions: { onDelete: (id: st
   store.events.on('older', ({ loading, hasMore }) => {
     top.replaceChildren();
     if (loading) top.append(h('span', 'spinner', undefined, { 'aria-hidden': 'true' }), h('span', undefined, '載入中…'));
-    else if (!hasMore) top.textContent = '已經是最早的訊息';
+    else if (!hasMore) top.textContent = store.mode === 'demo' ? '已經是最早的訊息' : `已經是最早的訊息（只保留最近 ${RETENTION_DAYS} 天）`;
   });
 
   list.addEventListener('scroll', () => {

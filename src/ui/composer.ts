@@ -1,7 +1,7 @@
 // 輸入區：多行輸入框、字數計數器、送出按鈕、提示文字（docs/architecture.md 第 6.2、7.1 節）。
 
 import type { ChatStore } from '../state/store';
-import { MAX_CONTENT_LENGTH } from '../types';
+import { MAX_CONTENT_LENGTH, RETENTION_NOTICE } from '../types';
 import { charLength, cleanContent } from '../lib/validate';
 import { button, h } from './dom';
 
@@ -27,6 +27,7 @@ export function createComposer(store: ChatStore): HTMLElement {
   const row = h('div', 'compose-row');
   row.append(shell, send);
   footer.append(hint, row);
+  if (store.mode !== 'demo') footer.append(h('p', 'retention-note', RETENTION_NOTICE));
 
   let hintTimer: number | undefined;
   let cooldownTimer: number | undefined;

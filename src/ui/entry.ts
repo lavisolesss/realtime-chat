@@ -9,9 +9,14 @@ import { button, h } from './dom';
  * 顯示進入畫面，按下「進入」後呼叫 onEnter(暱稱)。
  * onEnter 執行期間按鈕顯示「進入中…」；失敗時回到可以再按一次的狀態。
  */
-export function createEntryScreen(savedNickname: string, onEnter: (nickname: string) => Promise<void>): HTMLElement {
+export function createEntryScreen(
+  savedNickname: string,
+  notice: string | null,
+  onEnter: (nickname: string) => Promise<void>,
+): HTMLElement {
   const input = h('input', undefined, undefined, {
     id: 'entry-input',
+    name: 'nickname',
     autocomplete: 'off',
     maxlength: 40,
     placeholder: '例如：小明',
@@ -41,6 +46,7 @@ export function createEntryScreen(savedNickname: string, onEnter: (nickname: str
     field,
     enter,
   );
+  if (notice) form.append(h('p', 'entry-notice', notice));
 
   const screen = h('main', 'entry');
   screen.append(form);

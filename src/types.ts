@@ -4,6 +4,12 @@ export const PAGE_SIZE = 50;
 export const MAX_CONTENT_LENGTH = 500;
 export const MAX_NICKNAME_LENGTH = 20;
 export const COOLDOWN_MS = 1000;
+/** 伺服器保存訊息的期限與則數，要跟 supabase/migrations/002_retention.sql 一致 */
+export const RETENTION_DAYS = 30;
+export const RETENTION_MAX_MESSAGES = 5000;
+
+/** 告訴使用者訊息會被保存多久（docs/architecture.md 第 9.4 節）。示範模式訊息只存在瀏覽器，不用顯示 */
+export const RETENTION_NOTICE = `訊息會公開保存在伺服器上 ${RETENTION_DAYS} 天（最多最新 ${RETENTION_MAX_MESSAGES.toLocaleString('en-US')} 則），之後自動刪除。請勿張貼個人資料。`;
 
 export interface Message {
   id: string;

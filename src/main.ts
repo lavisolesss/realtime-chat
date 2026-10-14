@@ -6,6 +6,7 @@ import { LocalTransport } from './transport/local-transport';
 import { SupabaseTransport } from './transport/supabase-transport';
 import type { ChatTransport } from './transport/transport';
 import { ChatStore } from './state/store';
+import { RETENTION_NOTICE } from './types';
 import { createIdentity, loadSavedNickname, saveNickname } from './lib/identity';
 import { h } from './ui/dom';
 import { createHeader } from './ui/header';
@@ -35,7 +36,7 @@ function start(root: HTMLElement): void {
   const identityStorage = safeStorage(transport.mode === 'demo' ? 'sessionStorage' : 'localStorage');
   // 每次打開都先停在進入畫面；上次用過的代號會預填，但還是要按「進入」
   root.replaceChildren(
-    createEntryScreen(loadSavedNickname(identityStorage), async (nickname) => {
+    createEntryScreen(loadSavedNickname(identityStorage), transport.mode === 'demo' ? null : RETENTION_NOTICE, async (nickname) => {
       saveNickname(identityStorage, nickname);
       await enterChat(root, transport, identityStorage, nickname);
     }),
