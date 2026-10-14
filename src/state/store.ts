@@ -177,19 +177,22 @@ export class ChatStore {
   // ---------- 內部 ----------
 
   private setStatus(status: ConnectionStatus): void {
-    const wasReconnecting = this.status === 'reconnecting';
+    const wasOnline = this.status === 'online';
     this.status = status;
     this.events.emit('status', status);
-    if (wasReconnecting && status === 'online') void this.catchUp();
+    // 每次連上線都補一次：重連時補斷線期間的變動，第一次連線時補「載入訊息」到「開始接收」之間的空檔
+    if (!wasOnline && status === 'online') void this.catchUp();
   }
 
   /** 斷線重連後補上漏掉的新訊息、編輯、刪除（docs/architecture.md 第 6.7 節） */
   private async catchUp(): Promise<void> {
     try {
       const changed = await this.transport.loadChangedSince(this.lastSyncAt);
+      const oldest = this.messages[0]?.createdAt ?? '';
       for (const m of changed) {
         if (m.deletedAt) this.removeLocal(m.id);
-        else this.upsert(m, true);
+        // 比目前載入範圍更舊的訊息被編輯了，不用插進列表
+        else this.upsert(m, m.createdAt >= oldest);
       }
     } catch (error) {
       this.fail(error);

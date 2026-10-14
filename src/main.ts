@@ -3,6 +3,7 @@
 import './styles.css';
 import { supabaseConfig } from './config';
 import { LocalTransport } from './transport/local-transport';
+import { SupabaseTransport } from './transport/supabase-transport';
 import type { ChatTransport } from './transport/transport';
 import { ChatStore } from './state/store';
 import { loadIdentity } from './lib/identity';
@@ -14,12 +15,9 @@ import { createComposer } from './ui/composer';
 import { createOnlineList } from './ui/online-list';
 import { createDeleteDialog, createNicknameDialog } from './ui/dialogs';
 
+// 有 Supabase 設定就用 SupabaseTransport，沒有就是示範模式；畫面程式完全一樣
 function createTransport(): ChatTransport {
-  if (supabaseConfig) {
-    // 階段二才會新增 SupabaseTransport，在這裡換掉即可，畫面程式不用改
-    console.warn('已設定 Supabase，但目前是階段一，仍使用示範模式。');
-  }
-  return new LocalTransport();
+  return supabaseConfig ? new SupabaseTransport(supabaseConfig) : new LocalTransport();
 }
 
 function safeStorage(kind: 'localStorage' | 'sessionStorage'): Storage | null {
